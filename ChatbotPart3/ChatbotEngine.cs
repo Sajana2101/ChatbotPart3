@@ -15,6 +15,11 @@ namespace ChatbotPart3
         private System.Windows.Threading.DispatcherTimer reminderTimer;
 
         private readonly Random rnd = new Random();
+        private bool isInQuiz = false;
+        private int currentQuestionIndex = 0;
+        private int correctAnswers = 0;
+
+        private List<QuizQuestion> quizQuestions = new List<QuizQuestion>();
 
         private List<string> rememberedTopics = new List<string>();
         private string userInterestTopic = "";
@@ -62,11 +67,25 @@ namespace ChatbotPart3
 
         public void ProcessInput(string input)
         {
+           
+
+            if (isInQuiz)
+            {
+                ProcessQuizAnswer(input.ToLower().Trim());
+                return;
+            }
+
             string loweredInput = input.ToLower();
             LogUserInput(loweredInput);
             CheckForKeywords(loweredInput);
             inputCounter++;
             userPromptCounter++;
+
+            if (loweredInput.Contains("quiz"))
+            {
+                StartQuiz();
+                return;
+            }
 
             if (loweredInput.Contains("exit"))
             {
@@ -296,10 +315,10 @@ namespace ChatbotPart3
                 if (!task.IsComplete && task.ReminderTime.HasValue && task.ReminderTime.Value <= now)
                 {
                     TypeResponse($"⏰ Reminder: Task \"{task.Title}\" is due now!");
-                    task.ReminderTime = null; 
+                    task.ReminderTime = null;
+                }
             }
         }
-
 
 
         private async void TypeResponse(string message)
@@ -334,7 +353,7 @@ namespace ChatbotPart3
                 {
                     using (SoundPlayer player = new SoundPlayer(filePath))
                     {
-                        player.PlaySync();  // This blocks until audio finishes
+                        player.PlaySync();  
                     }
                 }
                 else
@@ -471,6 +490,167 @@ namespace ChatbotPart3
             public DateTime? ReminderTime { get; set; }
             public bool IsComplete { get; set; }
         }
+
+        private class QuizQuestion
+        {
+            public string QuestionText { get; set; }
+            public List<string> Options { get; set; } // null for True/False
+            public string CorrectAnswer { get; set; }
+            public string Explanation { get; set; }
+        }
+
+        private void StartQuiz()
+        {
+            isInQuiz = true;
+            currentQuestionIndex = 0;
+            correctAnswers = 0;
+            quizQuestions = GenerateQuizQuestions();
+
+            TypeResponse("🧠 Let's start the Cybersecurity Quiz! Type the letter (A/B/C/D) or 'true/false' for each question.");
+            FollowUpQuestion();
+        }
+
+        private void FollowUpQuestion()
+        {
+            if (currentQuestionIndex >= quizQuestions.Count)
+            {
+                EndQuiz();
+                return;
+            }
+
+            var q = quizQuestions[currentQuestionIndex];
+            TypeResponse($"\nQ{currentQuestionIndex + 1}: {q.QuestionText}");
+
+            if (q.Options != null)
+            {
+                for (int i = 0; i < q.Options.Count; i++)
+                {
+                    char option = (char)('A' + i);
+                    TypeResponse($"{option}) {q.Options[i]}");
+                }
+            }
+        }
+
+        private void ProcessQuizAnswer(string input)
+        {
+            var q = quizQuestions[currentQuestionIndex];
+            string answer = q.CorrectAnswer.ToLower();
+
+            bool isCorrect = false;
+
+            if (q.Options != null)
+            {
+                // Multiple choice (A/B/C/D)
+                int index = answer[0] - 'a';
+                isCorrect = input == answer || (index >= 0 && index < q.Options.Count && input == q.Options[index].ToLower());
+            }
+            else
+            {
+                // True/False
+                isCorrect = input == answer;
+            }
+
+            if (isCorrect)
+            {
+                correctAnswers++;
+                TypeResponse("✅ Correct!");
+            }
+            else
+            {
+                TypeResponse($"❌ Incorrect. The correct answer is: {q.CorrectAnswer.ToUpper()}");
+            }
+
+            TypeResponse($"📝 {q.Explanation}");
+            currentQuestionIndex++;
+            FollowUpQuestion();
+        }
+
+
+        private void EndQuiz()
+        {
+            isInQuiz = false;
+            TypeResponse($"\n🎉 Quiz complete! You scored {correctAnswers} out of {quizQuestions.Count}.");
+
+            string feedback;
+            if (correctAnswers >= 9)
+                feedback = "🏆 Amazing! You're a cybersecurity pro!";
+            else if (correctAnswers >= 7)
+                feedback = "👍 Great job! You know your stuff.";
+            else if (correctAnswers >= 4)
+                feedback = "🙂 Not bad, keep learning to stay safe online!";
+            else
+                feedback = "📚 Don't worry — keep studying and you'll get there!";
+
+            TypeResponse(feedback);
+        }
+
+        private List<QuizQuestion> GenerateQuizQuestions()
+        {
+            return new List<QuizQuestion>
+    {
+        new QuizQuestion {
+            QuestionText = "What does 'phishing' mean in cybersecurity?",
+            Options = new List<string> { "A cyber sport", "A hacking method", "Tricking users into giving information", "A data backup process" },
+            CorrectAnswer = "C",
+            Explanation = "Phishing is when attackers trick users into giving up sensitive info like passwords."
+        },
+        new QuizQuestion {
+            QuestionText = "True or False: A strong password should include letters, numbers, and symbols.",
+            Options = null,
+            CorrectAnswer = "true",
+            Explanation = "Strong passwords use a mix of characters to resist brute-force attacks."
+        },
+        new QuizQuestion {
+            QuestionText = "Which of these is a common form of malware?",
+            Options = new List<string> { "Firewall", "Trojan", "VPN", "Patch" },
+            CorrectAnswer = "B",
+            Explanation = "Trojans disguise themselves as legitimate software to infect your system."
+        },
+        new QuizQuestion {
+            QuestionText = "True or False: Public Wi-Fi is always safe if it has a password.",
+            Options = null,
+            CorrectAnswer = "false",
+            Explanation = "Even password-protected public Wi-Fi can be compromised by attackers on the same network."
+        },
+        new QuizQuestion {
+            QuestionText = "Which of the following is used to encrypt communications online?",
+            Options = new List<string> { "SSL/TLS", "HTML", "CSS", "HTTP" },
+            CorrectAnswer = "A",
+            Explanation = "SSL/TLS protocols secure data transmitted over the internet."
+        },
+        new QuizQuestion {
+            QuestionText = "True or False: Antivirus software can detect every type of malware.",
+            Options = null,
+            CorrectAnswer = "false",
+            Explanation = "No antivirus is perfect — it's important to also practice safe browsing habits."
+        },
+        new QuizQuestion {
+            QuestionText = "What is the purpose of two-factor authentication (2FA)?",
+            Options = new List<string> { "To create longer passwords", "To back up your data", "To secure login with an extra step", "To share credentials securely" },
+            CorrectAnswer = "C",
+            Explanation = "2FA adds an extra layer of protection beyond just your password."
+        },
+        new QuizQuestion {
+            QuestionText = "Which of the following is NOT a good security habit?",
+            Options = new List<string> { "Reusing passwords", "Updating software", "Using antivirus", "Enabling 2FA" },
+            CorrectAnswer = "A",
+            Explanation = "Reusing passwords is risky — if one is stolen, all accounts become vulnerable."
+        },
+        new QuizQuestion {
+            QuestionText = "True or False: A VPN hides your IP address and encrypts traffic.",
+            Options = null,
+            CorrectAnswer = "true",
+            Explanation = "VPNs protect your privacy by encrypting your internet connection and masking your IP."
+        },
+        new QuizQuestion {
+            QuestionText = "What is ransomware?",
+            Options = new List<string> { "A type of antivirus", "A tool for data backups", "Malware that locks data for ransom", "A firewall rule" },
+            CorrectAnswer = "C",
+            Explanation = "Ransomware locks files and demands payment to unlock them."
+        }
+    };
+        }
+
 
     }
 
