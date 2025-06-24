@@ -20,9 +20,61 @@ namespace ChatbotPart3
     /// </summary>
     public partial class MainWindow : Window
     {
+        private ChatbotEngine bot;
+        private bool isNameSet = false;
+
         public MainWindow()
         {
             InitializeComponent();
+            bot = new ChatbotEngine(AppendToChat);
+            bot.Initialize();
+            
         }
+
+        private void Send_Click(object sender, RoutedEventArgs e)
+        {
+            ProcessUserInput();
+        }
+
+        private void UserInput_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                ProcessUserInput();
+            }
+        }
+
+        private void ProcessUserInput()
+        {
+            string userText = UserInput.Text.Trim();
+            if (string.IsNullOrWhiteSpace(userText)) return;
+
+            AppendToChat($"You: {userText}");
+
+            if (!isNameSet)
+            {
+                bot.SetUserName(userText);
+                isNameSet = true;
+            }
+            else
+            {
+                bot.ProcessInput(userText);
+            }
+
+            UserInput.Clear();
+        }
+
+       
+           private void AppendToChat(string message)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                ChatHistory.Text += message;  // use += to append live text
+                ChatHistory.ScrollToEnd();
+            });
+        }
+
+
+    
     }
 }
