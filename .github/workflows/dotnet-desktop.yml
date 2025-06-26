@@ -1,0 +1,43 @@
+name: Build Maven Chatbot (WPF)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      Solution_Name: ChatbotPart3.sln    # Your solution file
+      Project_Path: ChatbotPart3\ChatbotPart3.csproj
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Restore dependencies
+      run: msbuild $env:Solution_Name /t:Restore /p:Configuration=Release
+
+    - name: Build WPF project
+      run: msbuild $env:Solution_Name /p:Configuration=Release
+
+    # Optional: Add test step here if you create test projects later
+    # - name: Run Tests
+    #   run: dotnet test
+
+    - name: Upload compiled build
+      uses: actions/upload-artifact@v4
+      with:
+        name: MavenChatbot_Build
+        path: ChatbotPart3\bin\Release\net8.0-windows
