@@ -73,7 +73,6 @@ namespace ChatbotPart3
 
 
 
-
             if (isInQuiz)
             {
                 ProcessQuizAnswer(input.ToLower().Trim());

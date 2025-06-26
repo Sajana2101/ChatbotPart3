@@ -91,6 +91,7 @@ namespace ChatbotPart3
                 Margin = new Thickness(10)
             };
 
+
             var bubble = new Border
             {
                 Background = isUser ? Brushes.LightBlue : Brushes.LightGray,
