@@ -15,9 +15,7 @@ using System.Windows.Shapes;
 
 namespace ChatbotPart3
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
+   
     public partial class MainWindow : Window
     {
         private ChatbotEngine bot;
@@ -26,7 +24,8 @@ namespace ChatbotPart3
         public MainWindow()
         {
             InitializeComponent();
-            bot = new ChatbotEngine(AppendToChat);
+            bot = new ChatbotEngine(msg => AppendToChat(msg));
+
             bot.Initialize();
             
         }
@@ -49,7 +48,7 @@ namespace ChatbotPart3
             string userText = UserInput.Text.Trim();
             if (string.IsNullOrWhiteSpace(userText)) return;
 
-            AppendToChat($"You: {userText}");
+            AppendToChat($"You: {userText}", true);
 
             if (!isNameSet)
             {
@@ -64,17 +63,46 @@ namespace ChatbotPart3
             UserInput.Clear();
         }
 
-       
-           private void AppendToChat(string message)
+
+        private void AppendToChat(string message, bool isUser = false)
         {
             Dispatcher.Invoke(() =>
             {
-                ChatHistory.Text += message;  // use += to append live text
-                ChatHistory.ScrollToEnd();
+                var bubble = CreateChatBubble(message, isUser);
+                ChatPanel.Children.Add(bubble);
+
+               
+                ChatScrollViewer.ScrollToEnd();
             });
         }
 
+        private Border CreateChatBubble(string message, bool isUser)
+        {
+            var textBlock = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 14,
+                Foreground = Brushes.Black,
+                MaxWidth = 500,
+                Margin = new Thickness(10)
+            };
 
-    
+            var bubble = new Border
+            {
+                Background = isUser ? Brushes.LightBlue : Brushes.LightGray,
+                CornerRadius = new CornerRadius(15),
+                Padding = new Thickness(10),
+                Margin = new Thickness(10),
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+                Child = textBlock,
+                MaxWidth = 520
+            };
+
+            return bubble;
+        }
+
+
+
     }
 }

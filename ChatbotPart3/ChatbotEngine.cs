@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Media;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace ChatbotPart3
 {
@@ -13,6 +14,10 @@ namespace ChatbotPart3
         private readonly Action<string> output;
         private List<TaskItem> userTasks = new List<TaskItem>();
         private System.Windows.Threading.DispatcherTimer reminderTimer;
+
+        private List<string> activityLog = new List<string>();
+        private int activityDisplayIndex = 0;
+
 
         private readonly Random rnd = new Random();
         private bool isInQuiz = false;
@@ -49,13 +54,7 @@ namespace ChatbotPart3
 
         }
 
-        //public void Continue()
-        //{
-        //    TypeResponse("Welcome to Maven Cybersecurity ChatBot!");
-        //    TypeResponse(GetRandomTip());
-        //    TypeResponse(GetRandomGreeting());
-        //    TypeResponse("What is your name:");
-        //}
+        
 
         public void SetUserName(string name)
         {
@@ -64,10 +63,16 @@ namespace ChatbotPart3
             TypeResponse("Let's delve into the world of cybersecurity where you can learn how to beat those pesky cybercriminals!");
             TypeResponse("Here are some things you can ask me about: phishing, malware, ransomware, VPN, firewalls, updates, etc.");
         }
+        private TaskItem lastAddedTask = null;
+        private bool awaitingReminderConfirmation = false;
+        private TaskItem awaitingReminderTimeForTask = null;
+
 
         public void ProcessInput(string input)
         {
-           
+
+
+
 
             if (isInQuiz)
             {
@@ -81,9 +86,93 @@ namespace ChatbotPart3
             inputCounter++;
             userPromptCounter++;
 
-            if (loweredInput.Contains("quiz"))
+            if (awaitingReminderConfirmation)
             {
-                StartQuiz();
+                if (loweredInput.Contains("yes"))
+                {
+                    TypeResponse("Great! Please tell me when to remind you (e.g. 'in 3 days', 'tomorrow at 5pm').");
+                    awaitingReminderConfirmation = false;
+                    awaitingReminderTimeForTask = lastAddedTask;
+                    return;
+                }
+                else
+                {
+                    TypeResponse("No problem! If you want to set a reminder later, just ask me.");
+                    lastAddedTask = null;
+                    awaitingReminderConfirmation = false;
+                    return;
+                }
+            }
+
+         
+            if (awaitingReminderTimeForTask != null)
+            {
+                string timePart = loweredInput;
+                if (TryParseTime(timePart, out TimeSpan offset))
+                {
+                    awaitingReminderTimeForTask.ReminderTime = DateTime.Now.Add(offset);
+                    TypeResponse($"Got it! I'll remind you about \"{awaitingReminderTimeForTask.Title}\" in {FormatTimeSpan(offset)}.");
+                    LogAction($"Reminder set for task '{awaitingReminderTimeForTask.Title}' in {FormatTimeSpan(offset)}.");
+                    awaitingReminderTimeForTask = null;
+                }
+                else if (DateTime.TryParse(timePart, out DateTime specificDate))
+                {
+                    awaitingReminderTimeForTask.ReminderTime = specificDate;
+                    TypeResponse($"Got it! I'll remind you about \"{awaitingReminderTimeForTask.Title}\" at {specificDate}.");
+                    LogAction($"Reminder set for task '{awaitingReminderTimeForTask.Title}' at {specificDate}.");
+                    awaitingReminderTimeForTask = null;
+                }
+                else
+                {
+                    TypeResponse("Sorry, I couldn't understand that time. Please try again.");
+                }
+                return;
+            }
+
+           
+            if (loweredInput.StartsWith("add task"))
+            {
+                string taskDesc = input.Substring(input.ToLower().IndexOf("add task") + 8).Trim();
+
+               
+                if (taskDesc.StartsWith("-"))
+                    taskDesc = taskDesc.Substring(1).Trim();
+
+                if (string.IsNullOrWhiteSpace(taskDesc))
+                {
+                    TypeResponse("Please provide a task description after 'add task'.");
+                    return;
+                }
+
+                var task = new TaskItem
+                {
+                    Title = taskDesc.Length > 30 ? taskDesc.Substring(0, 30) : taskDesc, 
+                    Description = taskDesc,
+                    IsComplete = false
+                };
+
+                userTasks.Add(task);
+                lastAddedTask = task;
+                awaitingReminderConfirmation = true;
+                TypeResponse($"Task added with the description \"{task.Description}\". Would you like a reminder?");
+                LogAction($"Task '{task.Title}' added.");
+                return;
+            }
+
+            if (loweredInput.Contains("activity log") || loweredInput.Contains("what have you done") || loweredInput.Contains("activity history") || loweredInput.Contains("log") || loweredInput.Contains("show me") || loweredInput.Contains("activities"))
+            {
+                ShowActivityLog();
+                return;
+            }
+            else if (loweredInput.Contains("show more"))
+            {
+                ShowMoreActivity();
+                return;
+            }
+
+            if (loweredInput.Contains("quiz") || loweredInput.Contains("play") || loweredInput.Contains("game"))
+            {
+                StartQuiz(username);
                 return;
             }
 
@@ -100,100 +189,261 @@ namespace ChatbotPart3
                 userPromptCounter = 0;
             }
 
-
-            if (loweredInput.StartsWith("add task"))
+           
+            if (loweredInput.StartsWith("add task to "))
             {
-                string[] parts = loweredInput.Substring(8).Split('|');
-                if (parts.Length < 2)
-                {
-                    TypeResponse("Please enter the task like this:\nadd task Title | Description | remind me in 2 minutes (optional)");
-                }
-                else
+                string title = input.Substring(12).Trim();
+                if (!string.IsNullOrWhiteSpace(title))
                 {
                     var task = new TaskItem
                     {
-                        Title = parts[0].Trim(),
-                        Description = parts[1].Trim(),
+                        Title = title,
+                        Description = "No description provided.",
                         IsComplete = false
                     };
+                    userTasks.Add(task);
+                    TypeResponse($"✅ Task added: \"{task.Title}\". Would you like to set a reminder for this task?");
+                    LogAction($"Task '{task.Title}' added.");
+                }
+                else
+                {
+                    TypeResponse("Please provide a task title after 'add task to'.");
+                }
+                return;
+            }
 
-                    if (parts.Length >= 3)
+          
+            if (loweredInput.StartsWith("remind me to "))
+            {
+                string remainder = input.Substring(13).Trim();
+                string[] parts = remainder.Split(new[] { " in ", " at ", " tomorrow", " tonight" }, StringSplitOptions.None);
+
+                string title = parts[0].Trim();
+                var task = userTasks.FirstOrDefault(t => t.Title.ToLower() == title.ToLower());
+
+               
+                if (task == null)
+                {
+                    task = new TaskItem { Title = title, Description = "No description provided.", IsComplete = false };
+                    userTasks.Add(task);
+                    LogAction($"Task '{task.Title}' added via reminder.");
+                }
+
+                DateTime reminderTime = DateTime.Now;
+
+                if (loweredInput.Contains("tonight"))
+                {
+                    reminderTime = DateTime.Today.AddHours(20); 
+                }
+                else if (loweredInput.Contains("tomorrow"))
+                {
+                    reminderTime = DateTime.Now.AddDays(1);
+
+                }
+                else if (loweredInput.Contains(" in ") || loweredInput.Contains(" at "))
+                {
+                    string timePart;
+                    if (loweredInput.Contains(" in "))
                     {
-                        string timePart = parts[2].Trim();
-                        if (timePart.StartsWith("remind me in "))
+                        string[] timeSplitParts = loweredInput.Split(new[] { " in " }, StringSplitOptions.None);
+                        timePart = timeSplitParts.Length > 1 ? timeSplitParts[1] : "";
+                    }
+                    else if (loweredInput.Contains(" at "))
+                    {
+                        string[] timeSplitParts = loweredInput.Split(new[] { " at " }, StringSplitOptions.None);
+                        timePart = timeSplitParts.Length > 1 ? timeSplitParts[1] : "";
+                    }
+                    else
+                    {
+                        timePart = "";
+                    }
+
+                    if (TryParseTime(timePart.Trim(), out TimeSpan offset))
+                    {
+                        reminderTime = DateTime.Now.Add(offset);
+                    }
+                    else if (DateTime.TryParse(timePart.Trim(), out DateTime specific))
+                    {
+                        reminderTime = specific;
+                    }
+                }
+
+                task.ReminderTime = reminderTime;
+                TypeResponse($"⏰ Reminder set for task \"{task.Title}\" at {reminderTime}.");
+                LogAction($"Reminder set for task '{task.Title}' at {reminderTime}.");
+                return;
+            }
+
+            
+            if (loweredInput.Contains("task"))
+            {
+                if (loweredInput.StartsWith("add task"))
+                {
+                    string taskData = input.Substring(input.ToLower().IndexOf("add task") + 8).Trim();
+                    string[] parts = taskData.Split('|');
+                    if (parts.Length < 2)
+                    {
+                        TypeResponse("Please enter the task like this:\nadd task Title | Description | remind me in 2 minutes (optional)");
+                    }
+                    else
+                    {
+                        var task = new TaskItem
                         {
-                            string duration = timePart.Replace("remind me in ", "").Trim();
-                            TimeSpan reminderOffset;
-                            if (TryParseTime(duration, out reminderOffset))
+                            Title = parts[0].Trim(),
+                            Description = parts[1].Trim(),
+                            IsComplete = false
+                        };
+
+                        if (parts.Length >= 3)
+                        {
+                            string timePart = parts[2].Trim().ToLower();
+                            if (timePart.StartsWith("remind me in "))
                             {
-                                task.ReminderTime = DateTime.Now.Add(reminderOffset);
+                                string duration = timePart.Substring("remind me in ".Length);
+                                if (TryParseTime(duration, out TimeSpan offset))
+                                {
+                                    task.ReminderTime = DateTime.Now.Add(offset);
+                                }
+                            }
+                            else if (DateTime.TryParse(timePart, out DateTime specificDate))
+                            {
+                                task.ReminderTime = specificDate;
                             }
                         }
-                        else if (DateTime.TryParse(timePart, out DateTime specificDate))
+
+                        userTasks.Add(task);
+                        TypeResponse($"Task \"{task.Title}\" added.");
+                        LogAction($"Task '{task.Title}' added.");
+                    }
+                    return;
+                }
+                else if (loweredInput.Contains("show tasks") || loweredInput.Contains("list tasks"))
+                {
+                    if (userTasks.Count == 0)
+                    {
+                        TypeResponse("You have no tasks.");
+                    }
+                    else
+                    {
+                        foreach (var task in userTasks)
                         {
-                            task.ReminderTime = specificDate;
+                            string status = task.IsComplete ? "✅ Completed" : "❗ Incomplete";
+                            string reminder = task.ReminderTime.HasValue ? $"(Reminder: {task.ReminderTime})" : "";
+                            TypeResponse($"• {task.Title} - {task.Description} {reminder} - {status}");
+                        }
+                        LogAction("Viewed tasks");
+                    }
+                    return;
+                }
+                else if (loweredInput.StartsWith("complete task "))
+                {
+                    string title = loweredInput.Replace("complete task ", "").Trim();
+                    var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
+                    if (task != null)
+                    {
+                        task.IsComplete = true;
+                        TypeResponse($"Task \"{task.Title}\" marked as complete.");
+                        LogAction($"Task '{task.Title}' marked as complete.");
+                    }
+                    else
+                    {
+                        TypeResponse("Task not found.");
+                    }
+                    return;
+                }
+                else if (loweredInput.StartsWith("delete task "))
+                {
+                    string title = loweredInput.Replace("delete task ", "").Trim();
+                    var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
+                    if (task != null)
+                    {
+                        userTasks.Remove(task);
+                        TypeResponse($"Task \"{task.Title}\" deleted.");
+                        LogAction($"Task '{task.Title}' deleted.");
+                    }
+                    else
+                    {
+                        TypeResponse("Task not found.");
+                    }
+                    return;
+                }
+                else if (loweredInput.StartsWith("remind") || loweredInput.StartsWith("remind me") || loweredInput.StartsWith("set reminder"))
+                {
+                    string remainder = input.ToLower();
+
+                    if (remainder.StartsWith("set reminder"))
+                        remainder = remainder.Substring("set reminder".Length).Trim();
+                    else if (remainder.StartsWith("remind me"))
+                        remainder = remainder.Substring("remind me".Length).Trim();
+                    else if (remainder.StartsWith("remind"))
+                        remainder = remainder.Substring("remind".Length).Trim();
+
+                    int taskIndex = remainder.IndexOf("task");
+                    if (taskIndex == -1)
+                    {
+                        TypeResponse("Please specify the task name like: 'set reminder for task TaskName in 10 minutes'");
+                        return;
+                    }
+
+                    string afterTask = remainder.Substring(taskIndex + 4).Trim();
+                    int inIndex = afterTask.IndexOf(" in ");
+                    int atIndex = afterTask.IndexOf(" at ");
+
+                    string title, timePart;
+                    if (inIndex != -1)
+                    {
+                        title = afterTask.Substring(0, inIndex).Trim();
+                        timePart = afterTask.Substring(inIndex + 4).Trim();
+                    }
+                    else if (atIndex != -1)
+                    {
+                        title = afterTask.Substring(0, atIndex).Trim();
+                        timePart = afterTask.Substring(atIndex + 4).Trim();
+                    }
+                    else
+                    {
+                        TypeResponse("Please specify the reminder time like 'in 10 minutes' or 'at 15:00'.");
+                        return;
+                    }
+
+                    var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
+                    if (task == null)
+                    {
+                        TypeResponse($"I couldn't find a task named \"{title}\".");
+                        return;
+                    }
+
+                    if (timePart.Contains(":") || timePart.Contains("/"))
+                    {
+                        if (DateTime.TryParse(timePart, out DateTime specificDateTime))
+                        {
+                            task.ReminderTime = specificDateTime;
+                            TypeResponse($"⏰ Reminder set for task \"{task.Title}\" at {specificDateTime}.");
+                            LogAction($"Reminder set for task '{task.Title}' at {specificDateTime}.");
+                        }
+                        else
+                        {
+                            TypeResponse("Invalid date/time format. Try using: 2025-06-26 15:30");
                         }
                     }
-
-                    userTasks.Add(task);
-                    TypeResponse($"Task \"{task.Title}\" added.");
-                }
-                return;
-            }
-            else if (loweredInput.Contains("show tasks"))
-            {
-                if (userTasks.Count == 0)
-                {
-                    TypeResponse("You have no tasks.");
-                }
-                else
-                {
-                    foreach (var task in userTasks)
+                    else if (TryParseTime(timePart, out TimeSpan offset))
                     {
-                        string status = task.IsComplete ? "✅ Completed" : "❗ Incomplete";
-                        string reminder = task.ReminderTime.HasValue ? $"(Reminder: {task.ReminderTime})" : "";
-                        TypeResponse($"• {task.Title} - {task.Description} {reminder} - {status}");
+                        DateTime reminderTime = DateTime.Now.Add(offset);
+                        task.ReminderTime = reminderTime;
+                        string humanReadableTime = FormatTimeSpan(offset);
+                        TypeResponse($"⏰ Reminder set for task \"{task.Title}\" in {humanReadableTime}.");
+                        LogAction($"Reminder set for task '{task.Title}' in {humanReadableTime}.");
                     }
+                    else
+                    {
+                        TypeResponse("Sorry, I couldn't understand the time duration. Try '10 minutes', '2 hours', or '1 day'.");
+                    }
+
+                    return;
                 }
-                return;
-            }
-            else if (loweredInput.StartsWith("complete task "))
-            {
-                string title = loweredInput.Replace("complete task ", "").Trim();
-                var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
-                if (task != null)
-                {
-                    task.IsComplete = true;
-                    TypeResponse($"Task \"{task.Title}\" marked as complete.");
-                }
-                else
-                {
-                    TypeResponse("Task not found.");
-                }
-                return;
-            }
-            else if (loweredInput.StartsWith("delete task "))
-            {
-                string title = loweredInput.Replace("delete task ", "").Trim();
-                var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
-                if (task != null)
-                {
-                    userTasks.Remove(task);
-                    TypeResponse($"Task \"{task.Title}\" deleted.");
-                }
-                else
-                {
-                    TypeResponse("Task not found.");
-                }
-                return;
             }
 
-
-
-
-
-
-
+           
             if (loweredInput.StartsWith("what is ") || loweredInput.Contains("definition"))
             {
                 string possibleTopic = loweredInput.Replace("what is ", "").Trim();
@@ -212,11 +462,17 @@ namespace ChatbotPart3
 
             string detectedSentiment = DetectSentiment(loweredInput);
             string detectedTopic = DetectTopic(loweredInput);
-
             if (detectedSentiment != null && detectedTopic != null)
             {
                 TypeResponse(sentiments[detectedSentiment]);
-                RespondToTopic(detectedTopic);
+
+               
+                lastFollowUpTopic = detectedTopic;
+                awaitingFollowUpResponse = true;
+                inConversation = true;
+                followUpIndex = 0;
+
+                TypeResponse($"Would you like to learn more about {detectedTopic}?");
                 return;
             }
 
@@ -251,6 +507,7 @@ namespace ChatbotPart3
 
             TypeResponse("I'm sorry, I don't understand that. Try asking about phishing, malware, or cybersecurity.");
         }
+
 
         private void RespondToTopic(string topic)
         {
@@ -316,6 +573,7 @@ namespace ChatbotPart3
                 {
                     TypeResponse($"⏰ Reminder: Task \"{task.Title}\" is due now!");
                     task.ReminderTime = null;
+                    LogAction($"Reminder triggered for task '{task.Title}'.");
                 }
             }
         }
@@ -371,7 +629,7 @@ namespace ChatbotPart3
             TypeResponse("Welcome to Maven Cybersecurity ChatBot!");
             TypeResponse(GetRandomTip());
             TypeResponse(GetRandomGreeting());
-            TypeResponse("What is your name:");
+           
 
           
             while (isTyping || messageQueue.Count > 0)
@@ -383,7 +641,7 @@ namespace ChatbotPart3
             PlayGreetingAudio("MavenAudio.wav");
 
             
-            output("\nYou can now enter your name.\n");
+            output("\nWhat is your name? : \n");
         }
 
         private void LogUserInput(string input)
@@ -410,7 +668,7 @@ namespace ChatbotPart3
                             userInterestTopic = topic;
                             userExpressedInterest = true;
                             userPromptCounter = 0;
-                            TypeResponse($"Maven: That's great you're interested in {topic}, I'll remember that!");
+                            TypeResponse($"Maven: That's great you're interested in {topic}, I'll remember that {username}!");
                             return;
                         }
                     }
@@ -421,6 +679,8 @@ namespace ChatbotPart3
         private bool TryParseTime(string input, out TimeSpan timeSpan)
         {
             timeSpan = TimeSpan.Zero;
+            input = input.Trim().ToLower();
+
             try
             {
                 if (input.Contains("second"))
@@ -447,8 +707,34 @@ namespace ChatbotPart3
                     timeSpan = TimeSpan.FromDays(days);
                     return true;
                 }
+                else if (input == "tomorrow")
+                {
+                    timeSpan = DateTime.Today.AddDays(1) - DateTime.Now;
+                    return true;
+                }
+                else if (input == "tonight")
+                {
+                    var tonight = DateTime.Today.AddHours(21);
+                    if (tonight <= DateTime.Now)
+                        tonight = tonight.AddDays(1); 
+                    timeSpan = tonight - DateTime.Now;
+                    return true;
+                }
+                else if (input == "next week")
+                {
+                    timeSpan = TimeSpan.FromDays(7);
+                    return true;
+                }
+                else if (input == "this weekend")
+                {
+                    int daysUntilSaturday = ((int)DayOfWeek.Saturday - (int)DateTime.Now.DayOfWeek + 7) % 7;
+                    var weekendTime = DateTime.Today.AddDays(daysUntilSaturday).AddHours(10); // 10 AM Saturday
+                    timeSpan = weekendTime - DateTime.Now;
+                    return true;
+                }
             }
             catch { }
+
             return false;
         }
 
@@ -494,19 +780,21 @@ namespace ChatbotPart3
         private class QuizQuestion
         {
             public string QuestionText { get; set; }
-            public List<string> Options { get; set; } // null for True/False
+            public List<string> Options { get; set; } 
             public string CorrectAnswer { get; set; }
             public string Explanation { get; set; }
         }
 
-        private void StartQuiz()
+        private void StartQuiz(string username)
         {
             isInQuiz = true;
             currentQuestionIndex = 0;
             correctAnswers = 0;
             quizQuestions = GenerateQuizQuestions();
 
-            TypeResponse("🧠 Let's start the Cybersecurity Quiz! Type the letter (A/B/C/D) or 'true/false' for each question.");
+            TypeResponse($"🧠 Let's start the Cybersecurity Quiz {username}! Type the letter (A/B/C/D) or 'true/false' for each question.");
+            LogAction("User started the cybersecurity quiz.");
+
             FollowUpQuestion();
         }
 
@@ -514,7 +802,7 @@ namespace ChatbotPart3
         {
             if (currentQuestionIndex >= quizQuestions.Count)
             {
-                EndQuiz();
+                EndQuiz(username);
                 return;
             }
 
@@ -540,13 +828,13 @@ namespace ChatbotPart3
 
             if (q.Options != null)
             {
-                // Multiple choice (A/B/C/D)
+                
                 int index = answer[0] - 'a';
                 isCorrect = input == answer || (index >= 0 && index < q.Options.Count && input == q.Options[index].ToLower());
             }
             else
             {
-                // True/False
+               
                 isCorrect = input == answer;
             }
 
@@ -566,20 +854,22 @@ namespace ChatbotPart3
         }
 
 
-        private void EndQuiz()
+        private void EndQuiz(string username)
         {
             isInQuiz = false;
             TypeResponse($"\n🎉 Quiz complete! You scored {correctAnswers} out of {quizQuestions.Count}.");
+            LogAction($"User completed quiz with score {correctAnswers}/{quizQuestions.Count}.");
+
 
             string feedback;
             if (correctAnswers >= 9)
-                feedback = "🏆 Amazing! You're a cybersecurity pro!";
+                feedback = $"🏆 Amazing {username} ! You're a cybersecurity pro!";
             else if (correctAnswers >= 7)
-                feedback = "👍 Great job! You know your stuff.";
+                feedback = $"👍 Great job {username}! You know your stuff.";
             else if (correctAnswers >= 4)
-                feedback = "🙂 Not bad, keep learning to stay safe online!";
+                feedback = $"🙂 Not bad {username}, keep learning to stay safe online!";
             else
-                feedback = "📚 Don't worry — keep studying and you'll get there!";
+                feedback = $"📚 Don't worry {username}— keep studying and you'll get there!";
 
             TypeResponse(feedback);
         }
@@ -650,6 +940,67 @@ namespace ChatbotPart3
         }
     };
         }
+
+        private void LogAction(string description)
+        {
+            string timestamp = DateTime.Now.ToString("g"); 
+            activityLog.Add($"[{timestamp}] {description}");
+
+          
+            if (activityLog.Count > 100)
+            {
+                activityLog.RemoveAt(0);
+            }
+        }
+
+        private void ShowActivityLog()
+        {
+            if (activityLog.Count == 0)
+            {
+                TypeResponse("🗒️ There's no activity to show yet.");
+                return;
+            }
+
+            activityDisplayIndex = Math.Max(0, activityLog.Count - 10); 
+            TypeResponse("📋 Here's what I've done for you recently:");
+
+            for (int i = activityDisplayIndex; i < activityLog.Count; i++)
+            {
+                TypeResponse(activityLog[i]);
+            }
+        }
+
+        private void ShowMoreActivity()
+        {
+            if (activityDisplayIndex <= 0)
+            {
+                TypeResponse("📁 No more activity to show.");
+                return;
+            }
+
+            int nextBatchStart = Math.Max(0, activityDisplayIndex - 10);
+            int nextBatchEnd = activityDisplayIndex;
+
+            for (int i = nextBatchStart; i < nextBatchEnd; i++)
+            {
+                TypeResponse(activityLog[i]);
+            }
+
+            activityDisplayIndex = nextBatchStart;
+        }
+
+        private string FormatTimeSpan(TimeSpan span)
+        {
+            if (span.TotalSeconds < 60)
+                return ((int)span.TotalSeconds).ToString() + " seconds";
+            if (span.TotalMinutes < 60)
+                return ((int)span.TotalMinutes).ToString() + " minutes";
+            if (span.TotalHours < 24)
+                return ((int)span.TotalHours).ToString() + " hours";
+            return ((int)span.TotalDays).ToString() + " days";
+        }
+
+
 
 
     }
