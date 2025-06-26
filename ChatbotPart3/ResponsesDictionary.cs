@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace ChatbotPart3
 {
+    //class to hold the responses to cybersecurity questions
     public static class ResponsesDictionary
     {
         public static readonly Dictionary<string, string[]> Data = new Dictionary<string, string[]>

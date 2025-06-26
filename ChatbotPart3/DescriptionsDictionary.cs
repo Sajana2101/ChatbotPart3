@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace ChatbotPart3
 {
+    //class to hold descriptions dictionary for definitions
     class DescriptionsDictionary
     {
         public static readonly Dictionary<string, string> Data = new Dictionary<string, string>
@@ -23,7 +24,8 @@ namespace ChatbotPart3
     { "updates", "Updates include patches and improvements that fix security vulnerabilities and keep your system protected." },
     { "social engineering", "Social engineering is a manipulation technique that exploits human error to gain private information or access." },
     { "safe browsing", "Safe browsing involves practices like using HTTPS websites, avoiding suspicious links, and not sharing personal information online." },
-    { "password", "A password is a secret string of characters used to authenticate a user and protect access to systems or data." }
+    { "password", "A password is a secret string of characters used to authenticate a user and protect access to systems or data." },
+    {"online scams", "Online scams are deceptive schemes carried out over the internet to trick people into giving away money, personal information, or access to their accounts." }
 };
     }
 }

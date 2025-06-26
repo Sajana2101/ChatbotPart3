@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-
+//class to hold the sentiments dictionary to hold sentiment responses 
 namespace ChatbotPart3
 {
+
     class SentimentsDictionary
     {
 
