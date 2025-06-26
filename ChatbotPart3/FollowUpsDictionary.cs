@@ -124,7 +124,16 @@ namespace ChatbotPart3
                 "Would you like to learn more?",
                  "Would you like me to expand on this topic?"
                 }
-            }
+            },
+
+            { "online scams", new[] {
+              "Have you ever encountered an online scam before?",
+              "It's important to recognize phishing emails and fake websites.",
+              "Always double-check URLs and look for secure HTTPS connections.",
+              "Do you know how to report an online scam if you see one?",
+              "Would you like tips on how to avoid common scams online?"
+}}
+
         };
     }
 }

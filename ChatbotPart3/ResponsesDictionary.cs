@@ -107,7 +107,15 @@ namespace ChatbotPart3
                 "End-to-end encryption ensures only the sender and receiver can see the message.",
                 "Encrypted websites use HTTPS — avoid HTTP for sensitive transactions.",
                 "Encryption protects your files and communications from prying eyes."
-            }}
+            }},
+            { "online scams", new[] {
+              "Online scams try to trick you into giving away money or personal info.",
+              "Be cautious of unsolicited emails or messages asking for sensitive data.",
+              "Never click on suspicious links or download attachments from unknown sources.",
+              "Verify the sender’s identity before sharing any personal or financial information.",
+              "Use multi-factor authentication to protect your accounts from scam attempts."
+}}
+
         };
     }
 }

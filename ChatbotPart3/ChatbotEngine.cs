@@ -11,27 +11,40 @@ using System.Windows;
 namespace ChatbotPart3
 {
     public class ChatbotEngine
-    {
+    { 
+        //used to send output messages back to the UI or caller
         private readonly Action<string> output;
+        // List to store the user's added task
         private List<TaskItem> userTasks = new List<TaskItem>();
+        //timer to check and trigger task reminders
         private System.Windows.Threading.DispatcherTimer reminderTimer;
-
+        //list to keep track of activity log entires for user actions
         private List<string> activityLog = new List<string>();
+        //index to tracj whcih portion of the activity log is currently displayed 
         private int activityDisplayIndex = 0;
 
-
+        //random number generator used for selecting random tips, greetings , or quiz questions
         private readonly Random rnd = new Random();
+        //flag for the quiz to indicate if user is taking the quiz
         private bool isInQuiz = false;
+        //track the current question index in the quiz
         private int currentQuestionIndex = 0;
+        //counts the number of correctly answered quiz questions
         private int correctAnswers = 0;
-
+        //holds the list of quiz questions 
         private List<QuizQuestion> quizQuestions = new List<QuizQuestion>();
+        //list of topics the user has shown interest in
 
         private List<string> rememberedTopics = new List<string>();
         private string userInterestTopic = "";
+        // Counter tracking how many user inputs have been processed, for timed prompts or reminders
         private int userPromptCounter = 0;
+
+        // Flag indicating if the user has expressed interest in a topic
         private bool userExpressedInterest = false;
+        // Index used to track progress through follow-up questions or explanations
         private int followUpIndex = 0;
+        // Flag indicating whether the chatbot is currently in an ongoing conversation state
         private bool inConversation = false;
 
         private string currentTopic = null;
@@ -43,20 +56,25 @@ namespace ChatbotPart3
 
         public ChatbotEngine(Action<string> outputCallback)
         {
+            // Save the output callback delegate, which allows the bot to send messages back to the UI or caller.
             output = outputCallback;
+            // Initialize the timer that will check for any task reminders to notify the user.
             InitializeReminderTimer();
         }
 
 
 
         public void Initialize()
+
+        // When the chatbot starts, run the welcome sequence to greet the user.
         {
             RunWelcomeSequence();
 
         }
 
-        
 
+        //SetUserName(name) saves the user’s name and sends a
+        //personalized greeting plus a single message listing all topics and commands the user can try.
         public void SetUserName(string name)
         {
             username = name;
@@ -88,37 +106,47 @@ namespace ChatbotPart3
 
           "\n- Exit");
         }
-        private TaskItem lastAddedTask = null;
-        private bool awaitingReminderConfirmation = false;
-        private TaskItem awaitingReminderTimeForTask = null;
+        private TaskItem lastAddedTask = null;              // Stores the most recently added task
+        private bool awaitingReminderConfirmation = false; // Tracks if the bot is waiting for user to confirm setting a reminder
+        private TaskItem awaitingReminderTimeForTask = null; // Stores the task that is waiting for a reminder time input from the user
+
 
 
         public void ProcessInput(string input)
         {
 
-
+            // If currently in quiz mode, process quiz answer and exit early
 
             if (isInQuiz)
             {
                 ProcessQuizAnswer(input.ToLower().Trim());
                 return;
             }
-
+            // Normalize input to lowercase
             string loweredInput = input.ToLower();
+            // Log input for history or analysis
             LogUserInput(loweredInput);
+            // Check if input contains special keywords
             CheckForKeywords(loweredInput);
+            // Increment total input counter
             inputCounter++;
+            // Increment prompt counter for interest tracking
             userPromptCounter++;
-
+            // Handle user's reply to reminder confirmation question
             if (awaitingReminderConfirmation)
             {
+                // User wants to add reminder
                 if (loweredInput.Contains("yes"))
                 {
+                    
                     TypeResponse("Great! Please tell me when to remind you (e.g. 'in 3 days', 'tomorrow at 5pm').");
+                    // Stop waiting for confirmation
                     awaitingReminderConfirmation = false;
+                    // Exit to wait for reminder time input
                     awaitingReminderTimeForTask = lastAddedTask;
                     return;
                 }
+                // User does not want reminder now
                 else
                 {
                     TypeResponse("No problem! If you want to set a reminder later, just ask me.");
@@ -128,17 +156,20 @@ namespace ChatbotPart3
                 }
             }
 
-         
+            // Handle the actual reminder time input after confirmation
             if (awaitingReminderTimeForTask != null)
             {
                 string timePart = loweredInput;
+                // Try to parse relative time e.g. "in 2 days"
                 if (TryParseTime(timePart, out TimeSpan offset))
                 {
                     awaitingReminderTimeForTask.ReminderTime = DateTime.Now.Add(offset);
                     TypeResponse($"Got it! I'll remind you about \"{awaitingReminderTimeForTask.Title}\" in {FormatTimeSpan(offset)}.");
                     LogAction($"Reminder set for task '{awaitingReminderTimeForTask.Title}' in {FormatTimeSpan(offset)}.");
+                    // Clear reminder waiting state
                     awaitingReminderTimeForTask = null;
                 }
+                // Or try to parse specific date/time
                 else if (DateTime.TryParse(timePart, out DateTime specificDate))
                 {
                     awaitingReminderTimeForTask.ReminderTime = specificDate;
@@ -146,66 +177,71 @@ namespace ChatbotPart3
                     LogAction($"Reminder set for task '{awaitingReminderTimeForTask.Title}' at {specificDate}.");
                     awaitingReminderTimeForTask = null;
                 }
-                else
+                else// Could not parse time
                 {
                     TypeResponse("Sorry, I couldn't understand that time. Please try again.");
                 }
-                return;
+                return; // Wait for next input after handling reminder time
             }
 
-           
+            // Add a new task if input starts with "add task"
             if (loweredInput.StartsWith("add task"))
             {
+                // Extract task description text after "add task"
                 string taskDesc = input.Substring(input.ToLower().IndexOf("add task") + 8).Trim();
 
-               
+                // Remove leading '-' if any
                 if (taskDesc.StartsWith("-"))
                     taskDesc = taskDesc.Substring(1).Trim();
-
+                // If task description empty, ask user to provide one
                 if (string.IsNullOrWhiteSpace(taskDesc))
                 {
                     TypeResponse("Please provide a task description after 'add task'.");
                     return;
                 }
-
+                // Create new TaskItem with title capped at 30 characters
                 var task = new TaskItem
                 {
                     Title = taskDesc.Length > 30 ? taskDesc.Substring(0, 30) : taskDesc, 
                     Description = taskDesc,
                     IsComplete = false
                 };
-
+                // Add task to user's task list
                 userTasks.Add(task);
+                // Store task for reminder confirmation
                 lastAddedTask = task;
+                // Ask if user wants reminder now
                 awaitingReminderConfirmation = true;
                 TypeResponse($"Task added with the description \"{task.Description}\". Would you like a reminder?");
                 LogAction($"Task '{task.Title}' added.");
                 return;
             }
-
+            // Show activity log commands
             if (loweredInput.Contains("activity log") || loweredInput.Contains("what have you done") || loweredInput.Contains("activity history") || loweredInput.Contains("log") || loweredInput.StartsWith("show me") || loweredInput.Contains("activities"))
             {
                 ShowActivityLog();
                 return;
             }
+
             else if (loweredInput.Contains("show more"))
             {
                 ShowMoreActivity();
                 return;
             }
-
+            // Start quiz if user mentions quiz/game/play
             if (loweredInput.Contains("quiz") || loweredInput.Contains("play") || loweredInput.Contains("game"))
             {
                 StartQuiz(username);
                 return;
             }
-
+            // Exit command
             if (loweredInput.Contains("exit"))
             {
                 TypeResponse($"Goodbye {username}! Stay safe online.");
                 return;
             }
 
+            // Periodically prompt user based on interest
             if (userPromptCounter >= 3 && userExpressedInterest && !string.IsNullOrEmpty(userInterestTopic))
             {
                 string randomTopic = rememberedTopics[rnd.Next(rememberedTopics.Count)];
@@ -213,7 +249,7 @@ namespace ChatbotPart3
                 userPromptCounter = 0;
             }
 
-           
+            // Add task shortcut "add task to ..."
             if (loweredInput.StartsWith("add task to "))
             {
                 string title = input.Substring(12).Trim();
@@ -235,17 +271,18 @@ namespace ChatbotPart3
                 }
                 return;
             }
+            // Reminder commands like "remind me to ..."
 
-          
             if (loweredInput.StartsWith("remind me to "))
             {
                 string remainder = input.Substring(13).Trim();
+                // Split remainder on keywords to separate task title from time info
                 string[] parts = remainder.Split(new[] { " in ", " at ", " tomorrow", " tonight" }, StringSplitOptions.None);
-
+                // Task title assumed before time phrase
                 string title = parts[0].Trim();
                 var task = userTasks.FirstOrDefault(t => t.Title.ToLower() == title.ToLower());
 
-               
+                // If task not found, create new one with no description
                 if (task == null)
                 {
                     task = new TaskItem { Title = title, Description = "No description provided.", IsComplete = false };
@@ -254,7 +291,7 @@ namespace ChatbotPart3
                 }
 
                 DateTime reminderTime = DateTime.Now;
-
+                // Set reminder time based on keywords
                 if (loweredInput.Contains("tonight"))
                 {
                     reminderTime = DateTime.Today.AddHours(20); 
@@ -294,6 +331,7 @@ namespace ChatbotPart3
 
                 task.ReminderTime = reminderTime;
                 TypeResponse($"⏰ Reminder set for task \"{task.Title}\" at {reminderTime}.");
+                //save activity 
                 LogAction($"Reminder set for task '{task.Title}' at {reminderTime}.");
                 return;
             }
@@ -303,11 +341,13 @@ namespace ChatbotPart3
             {
                 if (loweredInput.StartsWith("add task"))
                 {
+                    // Handle adding a task with the format "add task Title | Description "
                     string taskData = input.Substring(input.ToLower().IndexOf("add task") + 8).Trim();
+                   // Split by '|' to separate Title, Description
                     string[] parts = taskData.Split('|');
                     if (parts.Length < 2)
                     {
-                        TypeResponse("Please enter the task like this:\nadd task Title");
+                        TypeResponse("Please enter the task like this:\nadd task Title| description");
                     }
                     else
                     {
@@ -343,14 +383,18 @@ namespace ChatbotPart3
                     }
                     return;
                 }
+                // Handle showing/listing tasks
                 else if (loweredInput.Contains("show tasks") || loweredInput.Contains("list tasks") || loweredInput.Contains("view tasks"))
                 {
+                    
+    
                     if (userTasks.Count == 0)
                     {
                         TypeResponse("You have no tasks.");
                     }
                     else
                     {
+                        // Loop through tasks and display details and status
                         foreach (var task in userTasks)
                         {
                             string status = task.IsComplete ? "✅ Completed" : "❗ Incomplete";
@@ -362,12 +406,14 @@ namespace ChatbotPart3
                     }
                     return;
                 }
+                // Mark a task as complete using phrases "complete task", "mark task", or "task is"
+
                 else if (loweredInput.StartsWith("complete task ") ||
          loweredInput.StartsWith("mark task ") ||
          loweredInput.StartsWith("task is "))
                 {
                     string title = null;
-
+                    // Extract task title based on which phrase user used
                     if (loweredInput.StartsWith("complete task "))
                         title = loweredInput.Substring("complete task ".Length).Trim();
                     else if (loweredInput.StartsWith("mark task "))
@@ -383,12 +429,14 @@ namespace ChatbotPart3
 
                     if (!string.IsNullOrEmpty(title))
                     {
+                        // Search for task whose title contains the given title (case-insensitive)
                         var task = userTasks.FirstOrDefault(t =>
                             t.Title != null &&
                             t.Title.ToLower().Contains(title.ToLower()));
 
                         if (task != null)
                         {
+                            // Mark as complete
                             task.IsComplete = true;
                             TypeResponse($"✅ Task \"{task.Title}\" marked as complete.");
                             LogAction($"Task '{task.Title}' marked as complete.");
@@ -406,13 +454,18 @@ namespace ChatbotPart3
 
                     return;
                 }
-
+                // Delete a task with "delete task" phrase
                 else if (loweredInput.StartsWith("delete task ")|| loweredInput.Contains("delete task "))
                 {
+                    // Extract task title after "delete task"
                     string title = loweredInput.Replace("delete task ", "").Trim();
+                    // Find exact matching task by title (case-insensitive)
                     var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
                     if (task != null)
+
                     {
+                        
+
                         userTasks.Remove(task);
                         TypeResponse($"Task \"{task.Title}\" deleted.");
 
@@ -426,25 +479,27 @@ namespace ChatbotPart3
                     }
                     return;
                 }
+                // Set reminder for a task using phrases "remind", "remind me", or "set reminder"
                 else if (loweredInput.StartsWith("remind") || loweredInput.StartsWith("remind me") || loweredInput.StartsWith("set reminder"))
                 {
                     string remainder = input.ToLower();
-
+                    // Remove the command phrase from start
                     if (remainder.StartsWith("set reminder"))
                         remainder = remainder.Substring("set reminder".Length).Trim();
                     else if (remainder.StartsWith("remind me"))
                         remainder = remainder.Substring("remind me".Length).Trim();
                     else if (remainder.StartsWith("remind"))
                         remainder = remainder.Substring("remind".Length).Trim();
-
+                    // Find where the word "task" occurs to separate title and time
                     int taskIndex = remainder.IndexOf("task");
                     if (taskIndex == -1)
                     {
                         TypeResponse("Please specify the task name like: 'set reminder for task TaskName in 10 minutes'");
                         return;
                     }
-
+                    // Extract part after "task"
                     string afterTask = remainder.Substring(taskIndex + 4).Trim();
+                    // Try to split time from title using " in " or " at "
                     int inIndex = afterTask.IndexOf(" in ");
                     int atIndex = afterTask.IndexOf(" at ");
 
@@ -464,14 +519,14 @@ namespace ChatbotPart3
                         TypeResponse("Please specify the reminder time like 'in 10 minutes' or 'at 15:00'.");
                         return;
                     }
-
+                    // Find the task by exact title match (case-insensitive)
                     var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
                     if (task == null)
                     {
                         TypeResponse($"I couldn't find a task named \"{title}\".");
                         return;
                     }
-
+                    // Parse time and set reminder accordingly
                     if (timePart.Contains(":") || timePart.Contains("/"))
                     {
                         if (DateTime.TryParse(timePart, out DateTime specificDateTime))
@@ -504,13 +559,15 @@ namespace ChatbotPart3
                 }
             }
 
-           
+            // Handle questions starting with "what is" or containing "definition"
             if (loweredInput.StartsWith("what is ") || loweredInput.Contains("definition"))
             {
                 string possibleTopic = loweredInput.Replace("what is ", "").Trim();
                 if (descriptions.ContainsKey(possibleTopic))
                 {
+                    // Provide definition/description
                     TypeResponse(descriptions[possibleTopic]);
+                    // Offer related follow-up info
                     HandleFollowUp(possibleTopic);
                     return;
                 }
@@ -520,14 +577,14 @@ namespace ChatbotPart3
                     return;
                 }
             }
-
+            // Detect user sentiment and topic from input
             string detectedSentiment = DetectSentiment(loweredInput);
             string detectedTopic = DetectTopic(loweredInput);
             if (detectedSentiment != null && detectedTopic != null)
             {
                 TypeResponse(sentiments[detectedSentiment]);
 
-               
+                // Prepare for follow-up conversation on detected topic
                 lastFollowUpTopic = detectedTopic;
                 awaitingFollowUpResponse = true;
                 inConversation = true;
@@ -536,11 +593,12 @@ namespace ChatbotPart3
                 TypeResponse($"Would you like to learn more about {detectedTopic}?");
                 return;
             }
-
+            // Handle user response to follow-up prompts
             if (awaitingFollowUpResponse)
             {
                 if (loweredInput.Contains("yes") || loweredInput.Contains("confused") || loweredInput.Contains("explain"))
                 {
+                    // Provide more info on topic
                     RespondToTopic(lastFollowUpTopic);
                     return;
                 }
@@ -553,23 +611,24 @@ namespace ChatbotPart3
                     return;
                 }
             }
-
+            // Handle requests for more explanation on current topic
             if (currentTopic != null && (loweredInput.Contains("explain") || loweredInput.Contains("more")))
             {
                 RespondToTopic(currentTopic);
                 return;
             }
-
+            // Respond directly to detected topic
             if (detectedTopic != null)
             {
                 RespondToTopic(detectedTopic);
                 return;
             }
+            // Fallback response if input not understood
 
             TypeResponse("I'm sorry, I don't understand that. Try asking about phishing, malware, or cybersecurity.");
         }
 
-
+        // Responds with a random reply for the given topic and triggers a follow-up prompt
         private void RespondToTopic(string topic)
         {
             if (!responses.ContainsKey(topic)) return;
@@ -578,7 +637,7 @@ namespace ChatbotPart3
             TypeResponse(reply);
             HandleFollowUp(topic);
         }
-
+        // Sends a random follow-up question or asks if user wants another topic
         private void HandleFollowUp(string topic)
         {
             if (followUps.ContainsKey(topic))
@@ -595,7 +654,7 @@ namespace ChatbotPart3
                 lastFollowUpTopic = null;
             }
         }
-
+        // Detects if any known topic keyword is contained in input
         private string DetectTopic(string input)
         {
             foreach (var topic in responses.Keys)
@@ -604,7 +663,7 @@ namespace ChatbotPart3
             }
             return null;
         }
-
+        // Detects if any sentiment keyword is contained in input
         private string DetectSentiment(string input)
         {
             foreach (var sentiment in sentiments.Keys)
@@ -613,10 +672,10 @@ namespace ChatbotPart3
             }
             return null;
         }
-
+        // Queue and flag for managing asynchronous typing effect messages
         private readonly Queue<string> messageQueue = new Queue<string>();
         private bool isTyping = false;
-
+        // Initializes a timer that checks for due reminders every 5 seconds
         private void InitializeReminderTimer()
         {
             reminderTimer = new System.Windows.Threading.DispatcherTimer();
@@ -624,11 +683,12 @@ namespace ChatbotPart3
             reminderTimer.Tick += (s, e) => CheckReminders();
             reminderTimer.Start();
         }
+        // Sends a prompt asking the user if they want more help
         private void AskFollowUp()
         {
             TypeResponse($"🤖 Is there anything else I can do for you, {username}?");
         }
-
+        // Checks all tasks for due reminders and notifies user
         private void CheckReminders()
         {
             DateTime now = DateTime.Now;
@@ -643,7 +703,7 @@ namespace ChatbotPart3
             }
         }
 
-
+        // method to display writing
         private async void TypeResponse(string message)
         {
             messageQueue.Enqueue(message);
@@ -667,7 +727,7 @@ namespace ChatbotPart3
 
             isTyping = false;
         }
-
+        // Plays a greeting audio file, with error handling
         private void PlayGreetingAudio(string filePath)
         {
             try
@@ -689,6 +749,7 @@ namespace ChatbotPart3
                 output($"Error playing audio: {ex.Message}");
             }
         }
+        // Starts the welcome message sequence with tips and greetings, then asks for user name
         public async void RunWelcomeSequence()
         {
             TypeResponse("Welcome to Maven Cybersecurity ChatBot!");
@@ -708,14 +769,14 @@ namespace ChatbotPart3
             
             output("\nWhat is your name? : \n");
         }
-
+        // Logs user input to a chat history file, with periodic confirmation
         private void LogUserInput(string input)
         {
             File.AppendAllText(chatHistoryPath, $"User: {input}\n");
             if (inputCounter % 3 == 0)
                 TypeResponse("Chat history saved to ChatHistory.txt");
         }
-
+        // Detects if user expresses interest in cybersecurity topics and remembers them
         private void CheckForKeywords(string input)
         {
             string[] interestKeywords = { "interested", "curious", "keen", "fascinated", "interesting", "favourite", "fascinating", "like" };
@@ -740,14 +801,17 @@ namespace ChatbotPart3
                 }
             }
         }
-
+        // Parses natural language time expressions into TimeSpan
         private bool TryParseTime(string input, out TimeSpan timeSpan)
         {
             timeSpan = TimeSpan.Zero;
             input = input.Trim().ToLower();
 
             try
+
             {
+                // Parse seconds, minutes, hours, days, and specific keywords like tomorrow, tonight, next week, this weekend
+                // Returns true if parsed successfully, false otherwise
                 if (input.Contains("second"))
                 {
                     int secs = int.Parse(new string(input.Where(char.IsDigit).ToArray()));
@@ -803,7 +867,7 @@ namespace ChatbotPart3
             return false;
         }
 
-
+        // Returns a random cybersecurity tip from predefined list
         private string GetRandomTip()
         {
             string[] tips = {
@@ -815,7 +879,7 @@ namespace ChatbotPart3
             };
             return tips[rnd.Next(tips.Length)];
         }
-
+        // Returns a random greeting phrase for welcoming the user
         private string GetRandomGreeting()
         {
             string[] greetings = new[] {
@@ -828,11 +892,13 @@ namespace ChatbotPart3
             return greetings[rnd.Next(greetings.Length)];
         }
 
-       
+       //classes with the dictionaries of responses, sentiments, followups and descriptions
         private Dictionary<string, string[]> responses = ResponsesDictionary.Data;
         private Dictionary<string, string[]> followUps = FollowUpsDictionary.Data;
         private Dictionary<string, string> sentiments = SentimentsDictionary.Data;
         private Dictionary<string, string> descriptions = DescriptionsDictionary.Data;
+
+        // Represents a user task with title, description, optional reminder time, and completion status
 
         private class TaskItem
         {
@@ -841,7 +907,7 @@ namespace ChatbotPart3
             public DateTime? ReminderTime { get; set; }
             public bool IsComplete { get; set; }
         }
-
+        // Represents a quiz question with text, optional answer options, correct answer, and explanation
         private class QuizQuestion
         {
             public string QuestionText { get; set; }
@@ -850,6 +916,7 @@ namespace ChatbotPart3
             public string Explanation { get; set; }
         }
 
+        // Starts the quiz by initializing counters and question list, then presents first question
         private void StartQuiz(string username)
         {
             isInQuiz = true;
@@ -862,7 +929,7 @@ namespace ChatbotPart3
 
             FollowUpQuestion();
         }
-
+        // Presents the current quiz question and answer options (if any) to the user
         private void FollowUpQuestion()
         {
             if (currentQuestionIndex >= quizQuestions.Count)
@@ -887,7 +954,7 @@ namespace ChatbotPart3
 
             TypeResponse(questionBubble.ToString());
         }
-
+        // Processes the user’s answer, checks correctness, responds with feedback, and moves to next question
         private void ProcessQuizAnswer(string input)
         {
             var q = quizQuestions[currentQuestionIndex];
@@ -922,7 +989,7 @@ namespace ChatbotPart3
             FollowUpQuestion();
         }
 
-
+        // Ends the quiz, shows score and personalized feedback based on performance
         private void EndQuiz(string username)
         {
             isInQuiz = false;
@@ -942,7 +1009,7 @@ namespace ChatbotPart3
 
             TypeResponse(feedback);
         }
-
+        // Generates and returns a predefined list of quiz questions with answers and explanations
         private List<QuizQuestion> GenerateQuizQuestions()
         {
             return new List<QuizQuestion>
@@ -1009,7 +1076,7 @@ namespace ChatbotPart3
         }
     };
         }
-
+        // Logs a description with a timestamp in the activity log, keeps log size limited to 100
         private void LogAction(string description)
         {
             string timestamp = DateTime.Now.ToString("g"); 
@@ -1021,7 +1088,7 @@ namespace ChatbotPart3
                 activityLog.RemoveAt(0);
             }
         }
-
+        // Displays the last 10 logged activities to the user
         private void ShowActivityLog()
         {
             if (activityLog.Count == 0)
@@ -1038,7 +1105,7 @@ namespace ChatbotPart3
                 TypeResponse(activityLog[i]);
             }
         }
-
+        // Shows older logged activities in batches of 10 when user asks for more
         private void ShowMoreActivity()
         {
             if (activityDisplayIndex <= 0)
@@ -1057,7 +1124,7 @@ namespace ChatbotPart3
 
             activityDisplayIndex = nextBatchStart;
         }
-
+        // Converts a TimeSpan into a readable string format like "5 minutes" or "2 days"
         private string FormatTimeSpan(TimeSpan span)
         {
             if (span.TotalSeconds < 60)
