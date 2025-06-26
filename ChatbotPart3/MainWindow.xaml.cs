@@ -43,6 +43,8 @@ namespace ChatbotPart3
             }
         }
 
+        
+
         private void ProcessUserInput()
         {
             string userText = UserInput.Text.Trim();
@@ -80,6 +82,7 @@ namespace ChatbotPart3
         {
             var textBlock = new TextBlock
             {
+                
                 Text = message,
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 14,
@@ -102,6 +105,10 @@ namespace ChatbotPart3
             return bubble;
         }
 
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            Application.Current.Shutdown();
+        }
 
 
     }
