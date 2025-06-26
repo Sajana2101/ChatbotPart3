@@ -113,6 +113,7 @@ namespace ChatbotPart3
             return bubble;
         }
         // Handles exit button click to close app
+
         private void Exit_Click(object sender, RoutedEventArgs e)
         {
             Application.Current.Shutdown();
