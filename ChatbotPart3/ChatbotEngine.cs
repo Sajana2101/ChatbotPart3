@@ -703,7 +703,8 @@ namespace ChatbotPart3
             }
         }
 
-        // method to display writing
+        // method to display messages one after the other at the begining and display
+        //one after the other 
         private async void TypeResponse(string message)
         {
             messageQueue.Enqueue(message);
