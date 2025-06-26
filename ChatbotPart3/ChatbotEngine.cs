@@ -307,7 +307,7 @@ namespace ChatbotPart3
                     string[] parts = taskData.Split('|');
                     if (parts.Length < 2)
                     {
-                        TypeResponse("Please enter the task like this:\nadd task Title | Description | remind me in 2 minutes (optional)");
+                        TypeResponse("Please enter the task like this:\nadd task Title");
                     }
                     else
                     {
@@ -317,6 +317,7 @@ namespace ChatbotPart3
                             Description = parts[1].Trim(),
                             IsComplete = false
                         };
+                      
 
                         if (parts.Length >= 3)
                         {
@@ -338,6 +339,7 @@ namespace ChatbotPart3
                         userTasks.Add(task);
                         TypeResponse($"Task \"{task.Title}\" added.");
                         LogAction($"Task '{task.Title}' added.");
+                        AskFollowUp();
                     }
                     return;
                 }
@@ -356,6 +358,7 @@ namespace ChatbotPart3
                             TypeResponse($"• {task.Title} - {task.Description} {reminder} - {status}");
                         }
                         LogAction("Viewed tasks");
+                        AskFollowUp();
                     }
                     return;
                 }
@@ -389,6 +392,7 @@ namespace ChatbotPart3
                             task.IsComplete = true;
                             TypeResponse($"✅ Task \"{task.Title}\" marked as complete.");
                             LogAction($"Task '{task.Title}' marked as complete.");
+                            AskFollowUp();
                         }
                         else
                         {
@@ -411,7 +415,10 @@ namespace ChatbotPart3
                     {
                         userTasks.Remove(task);
                         TypeResponse($"Task \"{task.Title}\" deleted.");
+
                         LogAction($"Task '{task.Title}' deleted.");
+                        AskFollowUp();
+
                     }
                     else
                     {
@@ -471,6 +478,7 @@ namespace ChatbotPart3
                         {
                             task.ReminderTime = specificDateTime;
                             TypeResponse($"⏰ Reminder set for task \"{task.Title}\" at {specificDateTime}.");
+                            AskFollowUp();
                             LogAction($"Reminder set for task '{task.Title}' at {specificDateTime}.");
                         }
                         else
@@ -484,6 +492,7 @@ namespace ChatbotPart3
                         task.ReminderTime = reminderTime;
                         string humanReadableTime = FormatTimeSpan(offset);
                         TypeResponse($"⏰ Reminder set for task \"{task.Title}\" in {humanReadableTime}.");
+                        AskFollowUp();
                         LogAction($"Reminder set for task '{task.Title}' in {humanReadableTime}.");
                     }
                     else
@@ -614,6 +623,10 @@ namespace ChatbotPart3
             reminderTimer.Interval = TimeSpan.FromSeconds(5);
             reminderTimer.Tick += (s, e) => CheckReminders();
             reminderTimer.Start();
+        }
+        private void AskFollowUp()
+        {
+            TypeResponse($"🤖 Is there anything else I can do for you, {username}?");
         }
 
         private void CheckReminders()
