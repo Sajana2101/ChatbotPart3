@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Media;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -61,7 +62,31 @@ namespace ChatbotPart3
             username = name;
             TypeResponse($"Hello {username}, nice to meet you!");
             TypeResponse("Let's delve into the world of cybersecurity where you can learn how to beat those pesky cybercriminals!");
-            TypeResponse("Here are some things you can ask me about: phishing, malware, ransomware, VPN, firewalls, updates, etc.");
+            TypeResponse("Here are some things you can ask me about:" +
+
+          "\n- Cybersecurity" +
+          "\n  Virus" +
+          "\n- Phishing " +
+          "\n- Malware." +
+          "\n- Password Saftey " +
+          "\n- Safe online browsing " +
+          "\n- Ransomware " +
+          "\n- Social Engineering " +
+          "\n- Security Updates " +
+          "\n- Wifi " +
+          "\n- VPN " +
+          "\n- Firewalls " +
+          "\n- Online Scams"+
+          "\n- Encryption " +
+          "\n- Windows Defender " +
+          "\n- Add task"+
+          "\n- View Tasks"+
+          "\n- Add reminders to tasks"+
+          "\n- Update task status to complete"+
+          "\n- Delete tasks"+
+          "\n- View Activity log"+
+
+          "\n- Exit");
         }
         private TaskItem lastAddedTask = null;
         private bool awaitingReminderConfirmation = false;
@@ -158,7 +183,7 @@ namespace ChatbotPart3
                 return;
             }
 
-            if (loweredInput.Contains("activity log") || loweredInput.Contains("what have you done") || loweredInput.Contains("activity history") || loweredInput.Contains("log") || loweredInput.Contains("show me") || loweredInput.Contains("activities"))
+            if (loweredInput.Contains("activity log") || loweredInput.Contains("what have you done") || loweredInput.Contains("activity history") || loweredInput.Contains("log") || loweredInput.StartsWith("show me") || loweredInput.Contains("activities"))
             {
                 ShowActivityLog();
                 return;
@@ -316,7 +341,7 @@ namespace ChatbotPart3
                     }
                     return;
                 }
-                else if (loweredInput.Contains("show tasks") || loweredInput.Contains("list tasks"))
+                else if (loweredInput.Contains("show tasks") || loweredInput.Contains("list tasks") || loweredInput.Contains("view tasks"))
                 {
                     if (userTasks.Count == 0)
                     {
@@ -334,23 +359,51 @@ namespace ChatbotPart3
                     }
                     return;
                 }
-                else if (loweredInput.StartsWith("complete task "))
+                else if (loweredInput.StartsWith("complete task ") ||
+         loweredInput.StartsWith("mark task ") ||
+         loweredInput.StartsWith("task is "))
                 {
-                    string title = loweredInput.Replace("complete task ", "").Trim();
-                    var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
-                    if (task != null)
+                    string title = null;
+
+                    if (loweredInput.StartsWith("complete task "))
+                        title = loweredInput.Substring("complete task ".Length).Trim();
+                    else if (loweredInput.StartsWith("mark task "))
+                        title = loweredInput.Substring("mark task ".Length).Trim();
+                    else if (loweredInput.StartsWith("task is "))
+                        title = loweredInput.Substring("task is ".Length).Trim();
+
+                   
+                    title = title.Replace("as complete", "")
+                                 .Replace("completed", "")
+                                 .Replace("done", "")
+                                 .Trim();
+
+                    if (!string.IsNullOrEmpty(title))
                     {
-                        task.IsComplete = true;
-                        TypeResponse($"Task \"{task.Title}\" marked as complete.");
-                        LogAction($"Task '{task.Title}' marked as complete.");
+                        var task = userTasks.FirstOrDefault(t =>
+                            t.Title != null &&
+                            t.Title.ToLower().Contains(title.ToLower()));
+
+                        if (task != null)
+                        {
+                            task.IsComplete = true;
+                            TypeResponse($"✅ Task \"{task.Title}\" marked as complete.");
+                            LogAction($"Task '{task.Title}' marked as complete.");
+                        }
+                        else
+                        {
+                            TypeResponse($"❌ Task matching \"{title}\" not found.");
+                        }
                     }
                     else
                     {
-                        TypeResponse("Task not found.");
+                        TypeResponse("⚠️ Please specify which task you'd like to mark as complete.");
                     }
+
                     return;
                 }
-                else if (loweredInput.StartsWith("delete task "))
+
+                else if (loweredInput.StartsWith("delete task ")|| loweredInput.Contains("delete task "))
                 {
                     string title = loweredInput.Replace("delete task ", "").Trim();
                     var task = userTasks.Find(t => t.Title.ToLower() == title.ToLower());
@@ -806,16 +859,20 @@ namespace ChatbotPart3
             }
 
             var q = quizQuestions[currentQuestionIndex];
-            TypeResponse($"\nQ{currentQuestionIndex + 1}: {q.QuestionText}");
+            StringBuilder questionBubble = new StringBuilder();
+
+            questionBubble.AppendLine($"\n🧠 Q{currentQuestionIndex + 1}: {q.QuestionText}");
 
             if (q.Options != null)
             {
                 for (int i = 0; i < q.Options.Count; i++)
                 {
                     char option = (char)('A' + i);
-                    TypeResponse($"{option}) {q.Options[i]}");
+                    questionBubble.AppendLine($"{option}) {q.Options[i]}");
                 }
             }
+
+            TypeResponse(questionBubble.ToString());
         }
 
         private void ProcessQuizAnswer(string input)
